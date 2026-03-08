@@ -1,0 +1,5 @@
+# binary
+profile-registry
+
+# env overrides
+.env
