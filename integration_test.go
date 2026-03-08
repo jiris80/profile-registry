@@ -122,4 +122,23 @@ func TestIntegration(t *testing.T) {
 			t.Errorf("expected 404, got %d", resp.StatusCode)
 		}
 	})
+
+	t.Run("POST /save returns 409 on duplicate external_id", func(t *testing.T) {
+		body := fmt.Sprintf(`{
+			"external_id": "%s",
+			"name": "Jane Doe",
+			"email": "jane@example.com",
+			"date_of_birth": "1990-05-15T00:00:00Z"
+		}`, externalID)
+
+		resp, err := http.Post(srv.URL+"/save", "application/json", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatalf("POST /save failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusConflict {
+			t.Errorf("expected 409, got %d", resp.StatusCode)
+		}
+	})
 }

@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jiris80/profile-registry/model"
 	"gorm.io/gorm"
 )
@@ -51,6 +53,11 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result := h.db.Create(&record); result.Error != nil {
+		if isUniqueConstraintError(result.Error) {
+			http.Error(w, "record with this external_id already exists", http.StatusConflict)
+			return
+		}
+		slog.Error("failed to save record", "error", result.Error, "external_id", req.ExternalID)
 		http.Error(w, "failed to save record", http.StatusInternalServerError)
 		return
 	}
@@ -69,6 +76,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			http.Error(w, "record not found", http.StatusNotFound)
 		} else {
+			slog.Error("failed to retrieve record", "error", result.Error, "external_id", externalID)
 			http.Error(w, "failed to retrieve record", http.StatusInternalServerError)
 		}
 		return
@@ -76,4 +84,10 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(record)
+}
+
+// isUniqueConstraintError checks for Postgres unique constraint violation (error code 23505).
+func isUniqueConstraintError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
