@@ -93,9 +93,15 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	buf, err := json.Marshal(record)
+	if err != nil {
+		slog.Error("failed to encode response", "error", err, "external_id", req.ExternalID)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(record)
+	w.Write(buf)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
@@ -113,8 +119,14 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	buf, err := json.Marshal(record)
+	if err != nil {
+		slog.Error("failed to encode response", "error", err, "external_id", externalID)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(record)
+	w.Write(buf)
 }
 
 // isUniqueConstraintError checks for Postgres unique constraint violation (error code 23505).
