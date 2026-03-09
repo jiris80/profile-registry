@@ -52,7 +52,7 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 		DateOfBirth: dob,
 	}
 
-	if result := h.db.Create(&record); result.Error != nil {
+	if result := h.db.WithContext(r.Context()).Create(&record); result.Error != nil {
 		if isUniqueConstraintError(result.Error) {
 			http.Error(w, "record with this external_id already exists", http.StatusConflict)
 			return
@@ -71,7 +71,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	externalID := r.PathValue("id")
 
 	var record model.Record
-	result := h.db.Where("external_id = ?", externalID).First(&record)
+	result := h.db.WithContext(r.Context()).Where("external_id = ?", externalID).First(&record)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			http.Error(w, "record not found", http.StatusNotFound)
