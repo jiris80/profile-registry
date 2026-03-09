@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/jiris80/profile-registry/handler"
@@ -10,7 +11,7 @@ import (
 )
 
 func newServer(db *gorm.DB) http.Handler {
-	h := handler.New(db)
+	h := handler.New(db, handler.WithValidation(os.Getenv("VALIDATION_ENABLED") != "false"))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /save", h.Save)
