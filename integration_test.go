@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
-	"github.com/jiris80/profile-registry/db"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -37,7 +38,6 @@ func TestIntegration(t *testing.T) {
 	}
 	defer pgContainer.Terminate(ctx)
 
-	// Point the app at the container
 	host, err := pgContainer.Host(ctx)
 	if err != nil {
 		t.Fatalf("failed to get container host: %v", err)
@@ -47,16 +47,38 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("failed to get mapped port: %v", err)
 	}
 
-	os.Setenv("DB_HOST", host)
-	os.Setenv("DB_PORT", mappedPort.Port())
-	os.Setenv("DB_USER", "postgres")
-	os.Setenv("DB_PASSWORD", "postgres")
-	os.Setenv("DB_NAME", "profile_registry")
+	// Build the binary
+	bin := filepath.Join(t.TempDir(), "profile-registry-test")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", bin, ".")
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		t.Fatalf("failed to build binary: %v", err)
+	}
 
-	// Connect and migrate — same path as production startup
-	database := db.Connect()
-	srv := httptest.NewServer(newServer(database))
-	defer srv.Close()
+	// Start the binary with env vars pointing at the container
+	port := "18080"
+	srv := exec.Command(bin)
+	srv.Env = []string{
+		"SERVER_PORT=" + port,
+		"DB_HOST=" + host,
+		"DB_PORT=" + mappedPort.Port(),
+		"DB_USER=postgres",
+		"DB_PASSWORD=postgres",
+		"DB_NAME=profile_registry",
+	}
+	srv.Stdout = os.Stdout
+	srv.Stderr = os.Stderr
+	if err := srv.Start(); err != nil {
+		t.Fatalf("failed to start server binary: %v", err)
+	}
+	t.Cleanup(func() { srv.Process.Kill() })
+
+	baseURL := "http://localhost:" + port
+	waitForReady(t, baseURL)
 
 	externalID := "550e8400-e29b-41d4-a716-446655440000"
 
@@ -68,7 +90,7 @@ func TestIntegration(t *testing.T) {
 			"date_of_birth": "1990-05-15T00:00:00Z"
 		}`, externalID)
 
-		resp, err := http.Post(srv.URL+"/save", "application/json", bytes.NewBufferString(body))
+		resp, err := http.Post(baseURL+"/save", "application/json", bytes.NewBufferString(body))
 		if err != nil {
 			t.Fatalf("POST /save failed: %v", err)
 		}
@@ -90,7 +112,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("GET /{id} retrieves the record", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/" + externalID)
+		resp, err := http.Get(baseURL + "/" + externalID)
 		if err != nil {
 			t.Fatalf("GET /{id} failed: %v", err)
 		}
@@ -112,7 +134,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("GET /{id} returns 404 for unknown id", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/does-not-exist")
+		resp, err := http.Get(baseURL + "/does-not-exist")
 		if err != nil {
 			t.Fatalf("GET failed: %v", err)
 		}
@@ -131,7 +153,7 @@ func TestIntegration(t *testing.T) {
 			"date_of_birth": "1990-05-15T00:00:00Z"
 		}`, externalID)
 
-		resp, err := http.Post(srv.URL+"/save", "application/json", bytes.NewBufferString(body))
+		resp, err := http.Post(baseURL+"/save", "application/json", bytes.NewBufferString(body))
 		if err != nil {
 			t.Fatalf("POST /save failed: %v", err)
 		}
@@ -141,4 +163,18 @@ func TestIntegration(t *testing.T) {
 			t.Errorf("expected 409, got %d", resp.StatusCode)
 		}
 	})
+}
+
+func waitForReady(t *testing.T, baseURL string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(baseURL + "/nonexistent")
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("server did not become ready within 10s")
 }
