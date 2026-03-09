@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -46,12 +48,20 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		requestID := newRequestID()
 		next.ServeHTTP(rw, r)
 		slog.Info("request",
+			"request_id", requestID,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rw.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	})
+}
+
+func newRequestID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }

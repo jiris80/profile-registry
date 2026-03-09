@@ -16,6 +16,7 @@ import (
 
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
+
 type Handler struct {
 	db            *gorm.DB
 	validateInput bool
