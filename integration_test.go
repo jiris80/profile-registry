@@ -163,6 +163,37 @@ func TestIntegration(t *testing.T) {
 			t.Errorf("expected 409, got %d", resp.StatusCode)
 		}
 	})
+
+	t.Run("returns 500 when DB is down", func(t *testing.T) {
+		if err := pgContainer.Stop(ctx, nil); err != nil {
+			t.Fatalf("failed to stop postgres container: %v", err)
+		}
+
+		body := `{
+			"external_id": "660e8400-e29b-41d4-a716-446655440001",
+			"name": "John Doe",
+			"email": "john@example.com",
+			"date_of_birth": "1985-03-20T00:00:00Z"
+		}`
+
+		resp, err := http.Post(baseURL+"/save", "application/json", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatalf("POST /save failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", resp.StatusCode)
+		}
+
+		resp, err = http.Get(baseURL + "/" + externalID)
+		if err != nil {
+			t.Fatalf("GET failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", resp.StatusCode)
+		}
+	})
 }
 
 func waitForReady(t *testing.T, baseURL string) {
