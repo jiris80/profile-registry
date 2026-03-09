@@ -40,6 +40,20 @@ func TestLoggingMiddleware_CapturesStatusAndFields(t *testing.T) {
 	}
 }
 
+func TestRecoveryMiddleware_Returns500OnPanic(t *testing.T) {
+	handler := recoveryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("something went wrong")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rw.Code)
+	}
+}
+
 func TestLoggingMiddleware_DefaultsTo200(t *testing.T) {
 	var buf bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
